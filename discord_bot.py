@@ -2,47 +2,70 @@
 Main file for discord bot. Functionality TBD.
 '''
 
+# TODO - Add Google Search
+# TODO - Add meme making
+# TODO - Add stock prices
+# TODO - Add logging
+
 import os
 import random
 from pathlib import Path
 import json
+import logging
 from dotenv import load_dotenv
 import discord
 import requests
+import text_blobs
 
-# Providing the path to a .env file that contains the credentials
+# Set up the logging formatting can't use f-strings
+logger = logging.getLogger('discord_bot')
+logger.setLevel(logging.DEBUG)
+file_handler = logging.FileHandler('discord_bot.log')
+file_handler.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+logger.info('Seting up the Environment varibles')
 load_dotenv(dotenv_path=Path('.', '.env'))
 
-# Pull in the credentials
+logger.info('Pulling in the credentials')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 GUILD_NAME = os.getenv('GUILD_NAME')
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 X_RAPIDAPI_KEY = os.getenv('X_RAPIDAPI_KEY')
 
-# Intents gives the bot permissions
+logger.info('Providing permissions to the bot')
 intents = discord.Intents.all()
 
-# Connect to the Discord server (guild)
+logger.info('Connecting to the Discord server (guild)')
 client = discord.Client(intents=intents)
 
 def display_server_information(guild):
     '''Display the server information'''
-    # Print the bot and guild information
+    logger.info('Printing the bot and guild information')
     print(f'{client.user} is connected to:\n\t{guild.name} (id: {guild.id})')
 
 def display_users(guild):
     '''Display the users on the server'''
-    # Find and print all of the guild members
+    logger.info('Finding and printing all of the guild members')
     members = '\n - '.join([member.name for member in guild.members])
     print(f'Guild Members:\n - {members}')
 
 def get_weather(message):
     '''Query Open Weather Map API for the provided city'''
+    logger.info('Using the Open Weather Map API to pull weather info')
     error_message = 'Improper formatting. Example:  weather! indianaplis,us'
     if len(message.content.split(' ')) != 2:
+        logger.debug('Incorrect format for weather request.')
         return message.content, error_message
     city_country = message.content.split(' ')[1]
     if len(city_country.split(',')) != 2:
+        logger.debug('Incorect format for weather request')
         return message.content, error_message
 
     url = "https://community-open-weather-map.p.rapidapi.com/forecast"
@@ -56,21 +79,12 @@ def get_weather(message):
 
     response = requests.request("GET", url, headers=headers, params=querystring)
     if response.status_code == 200:
-
+        logger.info('Received 200 response from Weather API')
         json_data = json.loads(response.text)
-        # Example first entry of the response.  Can add more info to the output later
-        '''
-        {'cod': '200', 'message': 0, 'cnt': 40, 'list': [{'dt': 1610928000,
-        'main': {'temp': 272.2, 'feels_like': 267.25, 'temp_min': 271.34,
-        'temp_max': 272.2, 'pressure': 1008, 'sea_level': 1008, 'grnd_level': 983,
-        'humidity': 88, 'temp_kf': 0.86}, 'weather': [{'id': 600, 'main': 'Snow',
-        'description': 'light snow', 'icon': '13n'}], 'clouds': {'all': 94},
-        'wind': {'speed': 3.72, 'deg': 257}, 'visibility': 3498, 'pop': 0.55,
-        'snow': {'3h': 0.19}, 'sys': {'pod': 'n'}, 'dt_txt': '2021-01-18 00:00:00'}]}
-        '''
         temp_info = json_data['list'][0]['main']
         return city_country, temp_info
     if response.status_code == 429:
+        logger.info('Hit rate limit for Weather API.')
         return city_country, "Weather API Rate Limit Reached. Try again later."
     return city_country, response.status_code
 
@@ -79,7 +93,7 @@ async def on_ready():
     '''
     Main function to view options on the CLI
     '''
-    # Loop through all the servers and look for one that matches the GUILD_NAME
+    logger.info('Looping through all the servers and looking for GUILD_NAME')
     guild = discord.utils.get(client.guilds, name=GUILD_NAME)
     display_server_information(guild)
     display_users(guild)
@@ -87,6 +101,7 @@ async def on_ready():
 @client.event
 async def on_member_join(member):
     '''Welcome new members'''
+    logger.info('New member joined.  Sending welcome message.')
     await member.create_dm()
     await member.dm_channel.send(f"Hello {member.name}, welcome to the server.")
 
@@ -97,53 +112,30 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    brooklyn_99_quotes = [
-        'Bingpot!',
-        'Terry loves yogurt.',
-        'Cool. Cool cool cool cool cool cool cool cool.',
-        'Cool cool cool, tight tight tight.',
-        'No doubt, no doubt.',
-        'Title of your sex tape.',
-        'If I die, turn my tweets into a book.',
-        "I'm playing Kwazy Cupcakes, I'm hydrated as hell, and I'm listening to Sheryl Crow.  \
-            I've got my own party going on.",
-        'OK, no hard feelings, but I hate you.  Not joking.  Bye.',
-        "Captain, hey!  Welcome to the murder.",
-        "Aw man.  All the orange ssoda spilled out of my cereal.",
-        "I'm a detective.  I will detect.",
-    ]
-
     if message.content.startswith('99!'):
-        response = random.choice(brooklyn_99_quotes)
+        logging.info('Brooklyn 99 quote functionality was called')
+        response = random.choice(text_blobs.BROOKLYN_99_QUOTES)
         await message.channel.send(response)
 
     if message.content.startswith('weather!'):
+        logging.info('Weather request was received')
         city_country, response = get_weather(message)
         if city_country == message.content:
+            logging.debug('Recevied error for weather request')
             await message.channel.send(response) #In this case response is the error message
         elif isinstance(response, int):
+            logging.debug('API request returned a %i status code.', response)
             await message.channel.send(f"API Request returned a {response} status code.")
         elif isinstance(response, str):
+            logging.info('Received error for weather request: %s', response)
             await message.channel.send(response)
         else:
             # Temp info is returned in Kelvin for some unknown reason so we must convert
             temp_fahrenheit = round(32 + ((int(response['temp']) - 273.15) * 1.8), 2)
             await message.channel.send(f"Current temp in {city_country} is {temp_fahrenheit}° F")
+            logging.info('Weather response successfully processed')
 
     if message.content.startswith('help!'):
-        help_menu = '''
-        HELP MENU:
-        
-        99! - returns a random Brooklyn 99 quote
-            Example: 99!
-
-        weather! - returns the current temperature for a city
-            Example: weather! indianapolis,us
-            Note: Must specify city and 2 digit country code with no spaces in between
-
-        help! - displays this help menu
-            Example: help!
-        '''
-        await message.channel.send(help_menu)
+        await message.channel.send(text_blobs.HELP_MENU)
 
 client.run(BOT_TOKEN)
