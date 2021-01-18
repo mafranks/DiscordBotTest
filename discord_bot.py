@@ -5,7 +5,6 @@ Main file for discord bot. Functionality TBD.
 # TODO - Add Google Search
 # TODO - Add meme making
 # TODO - Add stock prices
-# TODO - Add logging
 
 import os
 import random
